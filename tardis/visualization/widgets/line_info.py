@@ -17,6 +17,7 @@ from tardis.visualization.widgets.util import (
     TableSummaryLabel,
     create_table_widget,
 )
+from tardis.visualization.tools.sdec_plot import SDECPlotter
 from tardis.util.environment import Environment
 from tardis.configuration.sorting_globals import SORTING_ALGORITHM
 
@@ -45,13 +46,14 @@ class LineInfoWidget:
     COLORS = {"selection_area": "lightpink", "selection_border": "salmon"}
 
     def __init__(
-        self,
-        lines_data,
-        line_interaction_analysis,
-        spectrum_wavelength,
-        spectrum_luminosity_density_lambda,
-        virt_spectrum_wavelength,
-        virt_spectrum_luminosity_density_lambda,
+            self,
+            lines_data,
+            line_interaction_analysis,
+            spectrum_wavelength,
+            spectrum_luminosity_density_lambda,
+            virt_spectrum_wavelength,
+            virt_spectrum_luminosity_density_lambda,
+            sdec_plotter=None,
     ):
         """
         Initialize the LineInfoWidget with line interaction and spectrum data.
@@ -73,9 +75,12 @@ class LineInfoWidget:
         virt_spectrum_luminosity_density_lambda : astropy.Quantity
             Luminosity density lambda values of a virtual spectrum, having unit
             of (erg/s)/Angstrom
+        sdec_plotter : SDECPlotter, optional
+            SDECPlotter instance for displaying SDEC plot data
         """
         self.lines_data = lines_data
         self.line_interaction_analysis = line_interaction_analysis
+        self.sdec_plotter = sdec_plotter
 
         # Widgets ------------------------------------------------
         max_rows_option = {"maxVisibleRows": 9}
@@ -128,6 +133,8 @@ class LineInfoWidget:
         LineInfoWidget object
         """
         spectrum_solver = sim.spectrum_solver
+        sdec_plotter = SDECPlotter.from_simulation(sim)
+
         return cls(
             lines_data=sim.plasma.lines.reset_index().set_index("line_id"),
             line_interaction_analysis={
@@ -144,6 +151,7 @@ class LineInfoWidget:
             virt_spectrum_luminosity_density_lambda=spectrum_solver.spectrum_virtual_packets.luminosity_density_lambda.to(
                 "erg/(s AA)"
             ),
+            sdec_plotter=sdec_plotter,
         )
 
     def get_species_interactions(
@@ -422,42 +430,22 @@ class LineInfoWidget:
         ]
 
     def plot_spectrum(
-        self,
-        wavelength,
-        luminosity_density_lambda,
-        virt_wavelength,
-        virt_luminosity_density_lambda,
+            self,
+            wavelength,
+            luminosity_density_lambda,
+            virt_wavelength,
+            virt_luminosity_density_lambda,
     ):
         """
-        Produce a plotly figure widget by plotting the spectrum of model.
-
-        Parameters
-        ----------
-        wavelength : astropy.Quantity
-            Wavelength values of a real spectrum, having unit of Angstrom
-        luminosity_density_lambda : astropy.Quantity
-            Luminosity density lambda values of a real spectrum, having unit
-            of (erg/s)/Angstrom
-        virt_wavelength : astropy.Quantity
-            Wavelength values of a virtual spectrum, having unit of Angstrom
-        virt_luminosity_density_lambda : astropy.Quantity
-            Luminosity density lambda values of a virtual spectrum, having unit
-            of (erg/s)/Angstrom
-
-        Returns
-        -------
-        plotly.graph_objects.FigureWidget
+        Produce a Bokeh figure by plotting the spectrum of model with SDEC data.
         """
-        # Create Bokeh figure with box select
         p = figure(
             width=800, height=400, title="Spectrum", tools="box_select,reset"
         )
 
-        # Add proper axis labels with units (Bokeh compatible)
         p.xaxis.axis_label = f"Wavelength [{wavelength.unit}]"
         p.yaxis.axis_label = f"Luminosity [{luminosity_density_lambda.unit}]"
 
-        # Add line plots
         p.line(
             wavelength.value,
             luminosity_density_lambda.value,
@@ -471,7 +459,32 @@ class LineInfoWidget:
             color="red",
         )
 
-        # Create invisible scatter for selection (needed for box select to work)
+        self.sdec_plotter._parse_species_list(species_list=None)
+
+        self.sdec_plotter._calculate_plotting_data(
+            packets_mode="virtual",
+            packet_wvl_range=None,
+            distance=None,
+            nelements=None,
+        )
+
+        p.line(
+            self.sdec_plotter.plot_wavelength.value,
+            self.sdec_plotter.modeled_spectrum_luminosity.value,
+            legend_label=f"Virtual Spectrum",
+            color="green",
+            line_dash="dashed",
+        )
+
+        p.line(
+            self.sdec_plotter.plot_wavelength.value,
+            self.sdec_plotter.photosphere_luminosity.value,
+            legend_label="Blackbody Photosphere",
+            color="orange",
+            line_dash="dotted",
+        )
+
+        # Create invisible scatter for selection
         source = ColumnDataSource(
             dict(x=wavelength.value, y=luminosity_density_lambda.value)
         )
