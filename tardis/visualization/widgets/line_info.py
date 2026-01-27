@@ -484,6 +484,22 @@ class LineInfoWidget:
             line_dash="dotted",
         )
 
+        p.line(
+            self.sdec_plotter.plot_wavelength.value,
+            self.sdec_plotter.emission_luminosities_df[("noint", "")].values,
+            legend_label="No Interaction",
+            color="#4C4C4C",
+            line_width=1.5,
+        )
+
+        p.line(
+            self.sdec_plotter.plot_wavelength.value,
+            self.sdec_plotter.emission_luminosities_df[("escatter", "")].values,
+            legend_label="Electron Scatter Only",
+            color="#8F8F8F",
+            line_width=1.5,
+        )
+
         # Create invisible scatter for selection
         source = ColumnDataSource(
             dict(x=wavelength.value, y=luminosity_density_lambda.value)
