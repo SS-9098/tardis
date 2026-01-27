@@ -82,6 +82,22 @@ class LineInfoWidget:
         self.line_interaction_analysis = line_interaction_analysis
         self.sdec_plotter = sdec_plotter
 
+        # Store renderers for toggle functionality
+        self.line_renderers = {}
+
+        self.checkbox_real_packets = pn.widgets.Checkbox(name="Real Packets", value=True)
+        self.checkbox_virtual_packets = pn.widgets.Checkbox(name="Virtual Packets", value=True)
+        self.checkbox_virtual_spectrum = pn.widgets.Checkbox(name="Virtual Spectrum", value=True)
+        self.checkbox_photosphere = pn.widgets.Checkbox(name="Blackbody Photosphere", value=True)
+        self.checkbox_no_interaction = pn.widgets.Checkbox(name="No Interaction", value=True)
+        self.checkbox_electron_scatter = pn.widgets.Checkbox(name="Electron Scatter Only", value=True)
+
+        # Link to callbacks
+        for cb in [self.checkbox_real_packets, self.checkbox_virtual_packets,
+                   self.checkbox_virtual_spectrum, self.checkbox_photosphere,
+                   self.checkbox_no_interaction, self.checkbox_electron_scatter]:
+            cb.param.watch(self._on_toggle_line, "value")
+
         # Widgets ------------------------------------------------
         max_rows_option = {"maxVisibleRows": 9}
         self.species_interactions_table = create_table_widget(
@@ -446,13 +462,14 @@ class LineInfoWidget:
         p.xaxis.axis_label = f"Wavelength [{wavelength.unit}]"
         p.yaxis.axis_label = f"Luminosity [{luminosity_density_lambda.unit}]"
 
-        p.line(
+        self.line_renderers["real_packets"] = p.line(
             wavelength.value,
             luminosity_density_lambda.value,
             legend_label="Real packets",
             color="blue",
         )
-        p.line(
+
+        self.line_renderers["virtual_packets"] = p.line(
             virt_wavelength.value,
             virt_luminosity_density_lambda.value,
             legend_label="Virtual packets",
@@ -468,15 +485,15 @@ class LineInfoWidget:
             nelements=None,
         )
 
-        p.line(
+        self.line_renderers["virtual_spectrum"] = p.line(
             self.sdec_plotter.plot_wavelength.value,
             self.sdec_plotter.modeled_spectrum_luminosity.value,
-            legend_label=f"Virtual Spectrum",
+            legend_label="Virtual Spectrum",
             color="green",
             line_dash="dashed",
         )
 
-        p.line(
+        self.line_renderers["photosphere"] = p.line(
             self.sdec_plotter.plot_wavelength.value,
             self.sdec_plotter.photosphere_luminosity.value,
             legend_label="Blackbody Photosphere",
@@ -484,7 +501,7 @@ class LineInfoWidget:
             line_dash="dotted",
         )
 
-        p.line(
+        self.line_renderers["no_interaction"] = p.line(
             self.sdec_plotter.plot_wavelength.value,
             self.sdec_plotter.emission_luminosities_df[("noint", "")].values,
             legend_label="No Interaction",
@@ -492,7 +509,7 @@ class LineInfoWidget:
             line_width=1.5,
         )
 
-        p.line(
+        self.line_renderers["electron_scatter"] = p.line(
             self.sdec_plotter.plot_wavelength.value,
             self.sdec_plotter.emission_luminosities_df[("escatter", "")].values,
             legend_label="Electron Scatter Only",
@@ -627,6 +644,24 @@ class LineInfoWidget:
         else:  # Line counts table will be empty
             self.total_packets_label.update_and_resize(0)
 
+    def _on_toggle_line(self, event):
+        """Toggle visibility of spectrum lines based on widget state."""
+        toggle_map = {
+            "Real Packets": "real_packets",
+            "Virtual Packets": "virtual_packets",
+            "Virtual Spectrum": "virtual_spectrum",
+            "Blackbody Photosphere": "photosphere",
+            "No Interaction": "no_interaction",
+            "Electron Scatter Only": "electron_scatter",
+            "Observed Spectrum": "observed",
+        }
+
+        widget_name = event.obj.name
+        renderer_key = toggle_map.get(widget_name)
+
+        if renderer_key and renderer_key in self.line_renderers:
+            self.line_renderers[renderer_key].visible = event.new
+
     def _filter_mode_toggle_handler(self, event):
         """
         Event handler for toggle in filter_mode_buttons.
@@ -744,6 +779,21 @@ class LineInfoWidget:
                 "width: 0.8em; height: 1.2em; vertical-align: middle;'></span>"
             )
 
+            visibility_panel = pn.Card(
+                pn.Row(
+                    self.checkbox_real_packets,
+                    self.checkbox_virtual_packets,
+                    self.checkbox_virtual_spectrum,
+                ),
+                pn.Row(
+                    self.checkbox_photosphere,
+                    self.checkbox_no_interaction,
+                    self.checkbox_electron_scatter,
+                ),
+                title="Line Visibility",
+                collapsed=False,
+            )
+
             # Create Panel description components
             filter_description = pn.pane.HTML(
                 f"<span style='font-size: 1.15em;'>Filter selected wavelength range "
@@ -776,7 +826,7 @@ class LineInfoWidget:
             )
 
             widget = pn.Column(
-                self.figure_widget, tables_row, sizing_mode="stretch_width"
+                visibility_panel, self.figure_widget, tables_row, sizing_mode="stretch_width"
             )
 
             return widget
