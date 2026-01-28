@@ -1,8 +1,11 @@
 """Class to create and display Line Info Widget."""
 
+import logging
+
 import numpy as np
 import pandas as pd
 import panel as pn
+import matplotlib.pyplot as plt
 from astropy import units as u
 from bokeh.models import ColumnDataSource
 from bokeh.plotting import figure
@@ -10,16 +13,19 @@ from bokeh.plotting import figure
 from tardis.analysis import LastLineInteraction
 from tardis.configuration.sorting_globals import SORTING_ALGORITHM
 from tardis.util.base import (
+    atomic_number2element_symbol,
     species_string_to_tuple,
     species_tuple_to_string,
 )
 from tardis.util.environment import Environment
+from tardis.visualization import plot_util as pu
 from tardis.visualization.tools.sdec_plot import SDECPlotter
 from tardis.visualization.widgets.util import (
     TableSummaryLabel,
     create_table_widget,
 )
 
+logger = logging.getLogger(__name__)
 
 class LineInfoWidget:
     """
@@ -99,6 +105,7 @@ class LineInfoWidget:
         # Store renderers for toggle functionality
         self.line_renderers = {}
 
+        self.element_checkboxes = {}
         self.checkbox_real_packets = pn.widgets.Checkbox(name="Real Packets", value=True)
         self.checkbox_virtual_packets = pn.widgets.Checkbox(name="Virtual Packets", value=True)
         if self.show_sdec:
@@ -560,6 +567,8 @@ class LineInfoWidget:
                 line_width=1.5,
             )
 
+            self._plot_species_contributions(p)
+
         # Create invisible scatter for selection
         source = ColumnDataSource(
             dict(x=wavelength.value, y=luminosity_density_lambda.value)
@@ -595,6 +604,153 @@ class LineInfoWidget:
         source.selected.on_change("indices", self._selection_callback)
 
         return pn.pane.Bokeh(p)
+
+    def _plot_species_contributions(self, p):
+        """Plot emission and absorption contributions for each element as stacked areas."""
+        if not self.show_sdec or self.sdec_plotter is None:
+            return
+
+        emission_df = self.sdec_plotter.emission_luminosities_df
+        absorption_df = self.sdec_plotter.absorption_luminosities_df
+        wavelength = self.sdec_plotter.plot_wavelength.value
+        species = self.sdec_plotter.species
+
+        if len(species) == 0:
+            return
+
+        cmap = plt.get_cmap("jet", len(species))
+        color_list = [
+            pu.to_rgb255_string(cmap(i / len(species)))
+            for i in range(len(species))
+        ]
+        self._element_info_for_legend = []
+
+        emission_lower = np.zeros(len(wavelength))
+        absorption_upper = np.zeros(len(wavelength))
+
+        # Plot emission contributions
+        for species_counter, identifier in enumerate(species):
+            try:
+                values = emission_df[tuple(identifier)].to_numpy()
+                emission_upper = emission_lower + values
+                color = color_list[species_counter]
+                element_symbol = self._get_element_symbol(identifier[0])
+                key = f"{element_symbol} (emission)"
+
+                self.line_renderers[key] = p.varea(
+                    x=wavelength,
+                    y1=emission_lower,
+                    y2=emission_upper,
+                    fill_color=color,
+                    fill_alpha=0.8,
+                )
+
+                # Create checkbox for this element emission
+                checkbox = pn.widgets.Checkbox(name=key, value=True)
+                checkbox.param.watch(self._on_toggle_line, "value")
+                self.element_checkboxes[key] = checkbox
+
+                # Store info for legend (only once per element)
+                if not any(info[0] == element_symbol for info in self._element_info_for_legend):
+                    self._element_info_for_legend.append((element_symbol, color, identifier[0]))
+
+                emission_lower = emission_upper
+            except KeyError:
+                info_msg = (
+                    f"{atomic_number2element_symbol(identifier)}"
+                    f" is not in the emission packets; skipping"
+                )
+                logger.info(info_msg)
+                pass
+
+        # Plot absorption contributions
+        for species_counter, identifier in enumerate(species):
+            try:
+                values = absorption_df[tuple(identifier)].to_numpy()
+                absorption_lower = absorption_upper - values
+                color = color_list[species_counter]
+                element_symbol = self._get_element_symbol(identifier[0])
+                key = f"{element_symbol} (absorption)"
+
+                self.line_renderers[key] = p.varea(
+                    x=wavelength,
+                    y1=absorption_lower,
+                    y2=absorption_upper,
+                    fill_color=color,
+                    fill_alpha=0.8,
+                )
+
+                # Create checkbox for this element absorption
+                checkbox = pn.widgets.Checkbox(name=key, value=True)
+                checkbox.param.watch(self._on_toggle_line, "value")
+                self.element_checkboxes[key] = checkbox
+
+                absorption_upper = absorption_lower
+            except KeyError:
+                info_msg = (
+                    f"{atomic_number2element_symbol(identifier)}"
+                    f" is not in the absorption packets; skipping"
+                )
+                logger.info(info_msg)
+                pass
+
+    def _add_element_line(self, p, key, x, y, color, label, visible=True, dash="solid", alpha=0.8):
+        """Add an element contribution line to the plot."""
+        self.line_renderers[key] = p.line(x, y, color=color, line_width=1.5,
+                                          line_dash=dash, alpha=alpha, visible=visible)
+        checkbox = pn.widgets.Checkbox(name=label, value=visible)
+        checkbox.param.watch(self._on_toggle_line, "value")
+        self.element_checkboxes[key] = checkbox
+
+    def _create_element_legend_widget(self):
+        """
+        Create a vertical colorbar-style legend widget for elements using Panel.
+
+        Returns
+        -------
+        pn.Column
+            A Panel column containing the colorbar legend
+        """
+        if not hasattr(self, '_element_info_for_legend') or not self._element_info_for_legend:
+            return None
+
+        legend_items = []
+
+        for element_symbol, color, atomic_num in self._element_info_for_legend:
+            color_box = pn.pane.HTML(
+                f"<div style='width: 30px; height: 25px; background-color: {color}; "
+                f"border: 1px solid #ccc;'></div>",
+                width=30, height=25
+            )
+            label = pn.pane.HTML(
+                f"<span style='font-size: 12px; margin-left: 5px;'>{element_symbol}</span>",
+                width=40
+            )
+            legend_items.append(pn.Row(color_box, label, height=27))
+
+        legend_column = pn.Column(
+            *legend_items,
+            pn.pane.HTML("<b style='font-size: 11px;'>Elements</b>"),
+            sizing_mode='fixed',
+            width=80,
+        )
+
+        # Reverse order so highest contribution is at top
+        legend_column = pn.Column(
+            pn.pane.HTML("<b style='font-size: 11px;'>Elements</b>"),
+            *reversed(legend_items),
+            sizing_mode='fixed',
+            width=80,
+        )
+
+        return legend_column
+
+    def _get_element_symbol(self, atomic_num):
+        """Get element symbol from atomic number."""
+        try:
+            return atomic_number2element_symbol(atomic_num)
+        except (KeyError, ValueError):
+            return f"Z={atomic_num}"
 
     def _selection_callback(self, _attr, _old, new):
         """
@@ -704,6 +860,12 @@ class LineInfoWidget:
 
         if renderer_key and renderer_key in self.line_renderers:
             self.line_renderers[renderer_key].visible = event.new
+        else:
+            for key, checkbox in self.element_checkboxes.items():
+                if checkbox is event.obj:
+                    if key in self.line_renderers:
+                        self.line_renderers[key].visible = event.new
+                    break
 
     def _filter_mode_toggle_handler(self, event):
         """
@@ -847,6 +1009,20 @@ class LineInfoWidget:
                 title="Line Visibility",
                 collapsed=False,
             )
+
+            element_panel = None
+            if self.show_sdec and self.element_checkboxes:
+                element_checkbox_list = list(self.element_checkboxes.values())
+                element_rows = [
+                    pn.Row(*element_checkbox_list[i:i + row_size])
+                    for i in range(0, len(element_checkbox_list), row_size)
+                ]
+                element_panel = pn.Card(
+                    *element_rows,
+                    title="Species Contributions",
+                    collapsed=True,
+                )
+
             # Create Panel description components
             filter_description = pn.pane.HTML(
                 f"<span style='font-size: 1.15em;'>Filter selected wavelength range "
@@ -878,8 +1054,27 @@ class LineInfoWidget:
                 sizing_mode="stretch_width",
             )
 
+            element_legend = None
+            if self.show_sdec and hasattr(self, '_element_info_for_legend'):
+                element_legend = self._create_element_legend_widget()
+
+            # Arrange figure with element legend on the right
+            if element_legend is not None:
+                figure_with_legend = pn.Row(
+                    self.figure_widget,
+                    element_legend,
+                    sizing_mode="stretch_width"
+                )
+            else:
+                figure_with_legend = self.figure_widget
+
+            panels = [visibility_panel]
+            if element_panel is not None:
+                panels.append(element_panel)
+            panels.extend([figure_with_legend, tables_row])
+
             widget = pn.Column(
-                visibility_panel, self.figure_widget, tables_row, sizing_mode="stretch_width"
+                *panels, sizing_mode="stretch_width"
             )
 
             return widget
