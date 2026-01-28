@@ -54,6 +54,7 @@ class LineInfoWidget:
             virt_spectrum_luminosity_density_lambda,
             sdec_plotter=None,
             show_sdec=False,
+            observed_spectrum=None,
     ):
         """
         Initialize the LineInfoWidget with line interaction and spectrum data.
@@ -79,11 +80,17 @@ class LineInfoWidget:
             SDECPlotter instance for displaying SDEC plot data
         show_sdec : bool, optional
             Whether to plot SDEC data (default: False)
+        observed_spectrum : tuple or list of astropy.Quantity, optional
+            Option to plot an observed spectrum in the widget. If given, the first element
+            should be the wavelength and the second element should be flux,
+            i.e. (wavelength, flux). The assumed units for wavelength and flux are
+            angstroms and erg/(angstroms * s * cm^2), respectively. Default value is None.
         """
         self.lines_data = lines_data
         self.line_interaction_analysis = line_interaction_analysis
         self.sdec_plotter = sdec_plotter
         self.show_sdec = show_sdec
+        self.observed_spectrum = observed_spectrum
 
         # Store renderers for toggle functionality
         self.line_renderers = {}
@@ -95,6 +102,8 @@ class LineInfoWidget:
             self.checkbox_photosphere = pn.widgets.Checkbox(name="Blackbody Photosphere", value=True)
             self.checkbox_no_interaction = pn.widgets.Checkbox(name="No Interaction", value=True)
             self.checkbox_electron_scatter = pn.widgets.Checkbox(name="Electron Scatter Only", value=True)
+        if self.observed_spectrum is not None:
+            self.checkbox_observed_spectrum = pn.widgets.Checkbox(name="Observed Spectrum", value=True)
 
         # Link to callbacks
         checkboxes = [self.checkbox_real_packets, self.checkbox_virtual_packets]
@@ -103,6 +112,8 @@ class LineInfoWidget:
                 self.checkbox_virtual_spectrum, self.checkbox_photosphere,
                 self.checkbox_no_interaction, self.checkbox_electron_scatter
             ])
+        if self.observed_spectrum is not None:
+            checkboxes.append(self.checkbox_observed_spectrum)
         for cb in checkboxes:
             cb.param.watch(self._on_toggle_line, "value")
 
@@ -143,7 +154,7 @@ class LineInfoWidget:
         self._current_wavelength_range = None  # Track current selection
 
     @classmethod
-    def from_simulation(cls, sim, show_sdec=False):
+    def from_simulation(cls, sim, show_sdec=False, observed_spectrum=None):
         """
         Create an instance of LineInfoWidget from a TARDIS simulation object.
 
@@ -153,6 +164,11 @@ class LineInfoWidget:
             TARDIS Simulation object produced by running a simulation
         show_sdec : bool, optional
             Whether to plot SDEC data (default: False)
+        observed_spectrum : tuple or list of astropy.Quantity, optional
+            Option to plot an observed spectrum in the widget. If given, the first element
+            should be the wavelength and the second element should be flux,
+            i.e. (wavelength, flux). The assumed units for wavelength and flux are
+            angstroms and erg/(angstroms * s * cm^2), respectively. Default value is None.
 
         Returns
         -------
@@ -178,7 +194,8 @@ class LineInfoWidget:
                 "erg/(s AA)"
             ),
             sdec_plotter=sdec_plotter,
-            show_sdec=show_sdec
+            show_sdec=show_sdec,
+            observed_spectrum=observed_spectrum,
         )
 
     def get_species_interactions(
@@ -487,6 +504,16 @@ class LineInfoWidget:
             color="red",
         )
 
+        if self.observed_spectrum is not None:
+            observed_wavelength = self.observed_spectrum[0].to(u.AA)
+            observed_flux = self.observed_spectrum[1]
+            self.line_renderers["observed"] = p.line(
+                observed_wavelength.value,
+                observed_flux.value,
+                legend_label="Observed Spectrum",
+                color="black",
+            )
+
         if self.show_sdec and self.sdec_plotter is not None:
             self.sdec_plotter._parse_species_list(species_list=None)
 
@@ -791,31 +818,31 @@ class LineInfoWidget:
                 "width: 0.8em; height: 1.2em; vertical-align: middle;'></span>"
             )
 
+            visibility_checkboxes = [
+                self.checkbox_real_packets,
+                self.checkbox_virtual_packets,
+            ]
             if self.show_sdec:
-                visibility_panel = pn.Card(
-                    pn.Row(
-                        self.checkbox_real_packets,
-                        self.checkbox_virtual_packets,
-                        self.checkbox_virtual_spectrum,
-                    ),
-                    pn.Row(
-                        self.checkbox_photosphere,
-                        self.checkbox_no_interaction,
-                        self.checkbox_electron_scatter,
-                    ),
-                    title="Line Visibility",
-                    collapsed=False,
-                )
-            else:
-                visibility_panel = pn.Card(
-                    pn.Row(
-                        self.checkbox_real_packets,
-                        self.checkbox_virtual_packets,
-                    ),
-                    title="Line Visibility",
-                    collapsed=False,
-                )
+                visibility_checkboxes.extend([
+                    self.checkbox_virtual_spectrum,
+                    self.checkbox_photosphere,
+                    self.checkbox_no_interaction,
+                    self.checkbox_electron_scatter,
+                ])
+            if self.observed_spectrum is not None:
+                visibility_checkboxes.append(self.checkbox_observed_spectrum)
 
+            row_size = 5
+            visibility_rows = [
+                pn.Row(*visibility_checkboxes[i:i + row_size])
+                for i in range(0, len(visibility_checkboxes), row_size)
+            ]
+
+            visibility_panel = pn.Card(
+                *visibility_rows,
+                title="Line Visibility",
+                collapsed=False,
+            )
             # Create Panel description components
             filter_description = pn.pane.HTML(
                 f"<span style='font-size: 1.15em;'>Filter selected wavelength range "
