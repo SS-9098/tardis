@@ -53,6 +53,7 @@ class LineInfoWidget:
             virt_spectrum_wavelength,
             virt_spectrum_luminosity_density_lambda,
             sdec_plotter=None,
+            show_sdec=False,
     ):
         """
         Initialize the LineInfoWidget with line interaction and spectrum data.
@@ -76,25 +77,33 @@ class LineInfoWidget:
             of (erg/s)/Angstrom
         sdec_plotter : SDECPlotter, optional
             SDECPlotter instance for displaying SDEC plot data
+        show_sdec : bool, optional
+            Whether to plot SDEC data (default: False)
         """
         self.lines_data = lines_data
         self.line_interaction_analysis = line_interaction_analysis
         self.sdec_plotter = sdec_plotter
+        self.show_sdec = show_sdec
 
         # Store renderers for toggle functionality
         self.line_renderers = {}
 
         self.checkbox_real_packets = pn.widgets.Checkbox(name="Real Packets", value=True)
         self.checkbox_virtual_packets = pn.widgets.Checkbox(name="Virtual Packets", value=True)
-        self.checkbox_virtual_spectrum = pn.widgets.Checkbox(name="Virtual Spectrum", value=True)
-        self.checkbox_photosphere = pn.widgets.Checkbox(name="Blackbody Photosphere", value=True)
-        self.checkbox_no_interaction = pn.widgets.Checkbox(name="No Interaction", value=True)
-        self.checkbox_electron_scatter = pn.widgets.Checkbox(name="Electron Scatter Only", value=True)
+        if self.show_sdec:
+            self.checkbox_virtual_spectrum = pn.widgets.Checkbox(name="Virtual Spectrum", value=True)
+            self.checkbox_photosphere = pn.widgets.Checkbox(name="Blackbody Photosphere", value=True)
+            self.checkbox_no_interaction = pn.widgets.Checkbox(name="No Interaction", value=True)
+            self.checkbox_electron_scatter = pn.widgets.Checkbox(name="Electron Scatter Only", value=True)
 
         # Link to callbacks
-        for cb in [self.checkbox_real_packets, self.checkbox_virtual_packets,
-                   self.checkbox_virtual_spectrum, self.checkbox_photosphere,
-                   self.checkbox_no_interaction, self.checkbox_electron_scatter]:
+        checkboxes = [self.checkbox_real_packets, self.checkbox_virtual_packets]
+        if self.show_sdec:
+            checkboxes.extend([
+                self.checkbox_virtual_spectrum, self.checkbox_photosphere,
+                self.checkbox_no_interaction, self.checkbox_electron_scatter
+            ])
+        for cb in checkboxes:
             cb.param.watch(self._on_toggle_line, "value")
 
         # Widgets ------------------------------------------------
@@ -134,7 +143,7 @@ class LineInfoWidget:
         self._current_wavelength_range = None  # Track current selection
 
     @classmethod
-    def from_simulation(cls, sim):
+    def from_simulation(cls, sim, show_sdec=False):
         """
         Create an instance of LineInfoWidget from a TARDIS simulation object.
 
@@ -142,13 +151,15 @@ class LineInfoWidget:
         ----------
         sim : tardis.simulation.Simulation
             TARDIS Simulation object produced by running a simulation
+        show_sdec : bool, optional
+            Whether to plot SDEC data (default: False)
 
         Returns
         -------
         LineInfoWidget object
         """
         spectrum_solver = sim.spectrum_solver
-        sdec_plotter = SDECPlotter.from_simulation(sim)
+        sdec_plotter = SDECPlotter.from_simulation(sim) if show_sdec else None
 
         return cls(
             lines_data=sim.plasma.lines.reset_index().set_index("line_id"),
@@ -167,6 +178,7 @@ class LineInfoWidget:
                 "erg/(s AA)"
             ),
             sdec_plotter=sdec_plotter,
+            show_sdec=show_sdec
         )
 
     def get_species_interactions(
@@ -475,46 +487,47 @@ class LineInfoWidget:
             color="red",
         )
 
-        self.sdec_plotter._parse_species_list(species_list=None)
+        if self.show_sdec and self.sdec_plotter is not None:
+            self.sdec_plotter._parse_species_list(species_list=None)
 
-        self.sdec_plotter._calculate_plotting_data(
-            packets_mode="virtual",
-            packet_wvl_range=None,
-            distance=None,
-            nelements=None,
-        )
+            self.sdec_plotter._calculate_plotting_data(
+            packets_mode = "virtual",
+            packet_wvl_range = None,
+            distance = None,
+            nelements = None,
+            )
 
-        self.line_renderers["virtual_spectrum"] = p.line(
-            self.sdec_plotter.plot_wavelength.value,
-            self.sdec_plotter.modeled_spectrum_luminosity.value,
-            legend_label="Virtual Spectrum",
-            color="green",
-            line_dash="dashed",
-        )
+            self.line_renderers["virtual_spectrum"] = p.line(
+                self.sdec_plotter.plot_wavelength.value,
+                self.sdec_plotter.modeled_spectrum_luminosity.value,
+                legend_label="Virtual Spectrum",
+                color="green",
+                line_dash="dashed",
+            )
 
-        self.line_renderers["photosphere"] = p.line(
-            self.sdec_plotter.plot_wavelength.value,
-            self.sdec_plotter.photosphere_luminosity.value,
-            legend_label="Blackbody Photosphere",
-            color="orange",
-            line_dash="dotted",
-        )
+            self.line_renderers["photosphere"] = p.line(
+                self.sdec_plotter.plot_wavelength.value,
+                self.sdec_plotter.photosphere_luminosity.value,
+                legend_label="Blackbody Photosphere",
+                color="orange",
+                line_dash="dotted",
+            )
 
-        self.line_renderers["no_interaction"] = p.line(
-            self.sdec_plotter.plot_wavelength.value,
-            self.sdec_plotter.emission_luminosities_df[("noint", "")].values,
-            legend_label="No Interaction",
-            color="#4C4C4C",
-            line_width=1.5,
-        )
+            self.line_renderers["no_interaction"] = p.line(
+                self.sdec_plotter.plot_wavelength.value,
+                self.sdec_plotter.emission_luminosities_df[("noint", "")].values,
+                legend_label="No Interaction",
+                color="#4C4C4C",
+                line_width=1.5,
+            )
 
-        self.line_renderers["electron_scatter"] = p.line(
-            self.sdec_plotter.plot_wavelength.value,
-            self.sdec_plotter.emission_luminosities_df[("escatter", "")].values,
-            legend_label="Electron Scatter Only",
-            color="#8F8F8F",
-            line_width=1.5,
-        )
+            self.line_renderers["electron_scatter"] = p.line(
+                self.sdec_plotter.plot_wavelength.value,
+                self.sdec_plotter.emission_luminosities_df[("escatter", "")].values,
+                legend_label="Electron Scatter Only",
+                color="#8F8F8F",
+                line_width=1.5,
+            )
 
         # Create invisible scatter for selection
         source = ColumnDataSource(
@@ -778,20 +791,30 @@ class LineInfoWidget:
                 "width: 0.8em; height: 1.2em; vertical-align: middle;'></span>"
             )
 
-            visibility_panel = pn.Card(
-                pn.Row(
-                    self.checkbox_real_packets,
-                    self.checkbox_virtual_packets,
-                    self.checkbox_virtual_spectrum,
-                ),
-                pn.Row(
-                    self.checkbox_photosphere,
-                    self.checkbox_no_interaction,
-                    self.checkbox_electron_scatter,
-                ),
-                title="Line Visibility",
-                collapsed=False,
-            )
+            if self.show_sdec:
+                visibility_panel = pn.Card(
+                    pn.Row(
+                        self.checkbox_real_packets,
+                        self.checkbox_virtual_packets,
+                        self.checkbox_virtual_spectrum,
+                    ),
+                    pn.Row(
+                        self.checkbox_photosphere,
+                        self.checkbox_no_interaction,
+                        self.checkbox_electron_scatter,
+                    ),
+                    title="Line Visibility",
+                    collapsed=False,
+                )
+            else:
+                visibility_panel = pn.Card(
+                    pn.Row(
+                        self.checkbox_real_packets,
+                        self.checkbox_virtual_packets,
+                    ),
+                    title="Line Visibility",
+                    collapsed=False,
+                )
 
             # Create Panel description components
             filter_description = pn.pane.HTML(
