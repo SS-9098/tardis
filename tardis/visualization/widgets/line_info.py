@@ -54,6 +54,7 @@ class LineInfoWidget:
             virt_spectrum_luminosity_density_lambda,
             sdec_plotter=None,
             show_sdec=False,
+            sdec_packets_mode="virtual",
             observed_spectrum=None,
     ):
         """
@@ -80,6 +81,8 @@ class LineInfoWidget:
             SDECPlotter instance for displaying SDEC plot data
         show_sdec : bool, optional
             Whether to plot SDEC data (default: False)
+        sdec_packets_mode : str, optional
+            Packets mode to use for SDEC plotter (default: "virtual")
         observed_spectrum : tuple or list of astropy.Quantity, optional
             Option to plot an observed spectrum in the widget. If given, the first element
             should be the wavelength and the second element should be flux,
@@ -90,6 +93,7 @@ class LineInfoWidget:
         self.line_interaction_analysis = line_interaction_analysis
         self.sdec_plotter = sdec_plotter
         self.show_sdec = show_sdec
+        self.sdec_packets_mode = sdec_packets_mode
         self.observed_spectrum = observed_spectrum
 
         # Store renderers for toggle functionality
@@ -98,7 +102,7 @@ class LineInfoWidget:
         self.checkbox_real_packets = pn.widgets.Checkbox(name="Real Packets", value=True)
         self.checkbox_virtual_packets = pn.widgets.Checkbox(name="Virtual Packets", value=True)
         if self.show_sdec:
-            self.checkbox_virtual_spectrum = pn.widgets.Checkbox(name="Virtual Spectrum", value=True)
+            self.checkbox_sdec_spectrum = pn.widgets.Checkbox(name="SDEC Spectrum", value=True)
             self.checkbox_photosphere = pn.widgets.Checkbox(name="Blackbody Photosphere", value=True)
             self.checkbox_no_interaction = pn.widgets.Checkbox(name="No Interaction", value=True)
             self.checkbox_electron_scatter = pn.widgets.Checkbox(name="Electron Scatter Only", value=True)
@@ -109,7 +113,7 @@ class LineInfoWidget:
         checkboxes = [self.checkbox_real_packets, self.checkbox_virtual_packets]
         if self.show_sdec:
             checkboxes.extend([
-                self.checkbox_virtual_spectrum, self.checkbox_photosphere,
+                self.checkbox_sdec_spectrum, self.checkbox_photosphere,
                 self.checkbox_no_interaction, self.checkbox_electron_scatter
             ])
         if self.observed_spectrum is not None:
@@ -154,7 +158,7 @@ class LineInfoWidget:
         self._current_wavelength_range = None  # Track current selection
 
     @classmethod
-    def from_simulation(cls, sim, show_sdec=False, observed_spectrum=None):
+    def from_simulation(cls, sim, show_sdec=False, sdec_packets_mode="virtual",  observed_spectrum=None):
         """
         Create an instance of LineInfoWidget from a TARDIS simulation object.
 
@@ -195,6 +199,7 @@ class LineInfoWidget:
             ),
             sdec_plotter=sdec_plotter,
             show_sdec=show_sdec,
+            sdec_packets_mode=sdec_packets_mode,
             observed_spectrum=observed_spectrum,
         )
 
@@ -516,17 +521,17 @@ class LineInfoWidget:
 
         if self.show_sdec and self.sdec_plotter is not None:
             self.sdec_plotter.prepare_plot_data(
-                packets_mode="virtual",
+                packets_mode=self.sdec_packets_mode,
                 packet_wvl_range=None,
                 distance=None,
                 species_list=None,
                 nelements=None,
             )
 
-            self.line_renderers["virtual_spectrum"] = p.line(
+            self.line_renderers["sdec_spectrum"] = p.line(
                 self.sdec_plotter.plot_wavelength.value,
                 self.sdec_plotter.modeled_spectrum_luminosity.value,
-                legend_label="Virtual Spectrum",
+                legend_label=f"{self.sdec_packets_mode.capitalize()} Spectrum",
                 color="green",
                 line_dash="dashed",
             )
@@ -687,7 +692,7 @@ class LineInfoWidget:
         toggle_map = {
             "Real Packets": "real_packets",
             "Virtual Packets": "virtual_packets",
-            "Virtual Spectrum": "virtual_spectrum",
+            "SDEC Spectrum": "sdec_spectrum",
             "Blackbody Photosphere": "photosphere",
             "No Interaction": "no_interaction",
             "Electron Scatter Only": "electron_scatter",
@@ -823,7 +828,7 @@ class LineInfoWidget:
             ]
             if self.show_sdec:
                 visibility_checkboxes.extend([
-                    self.checkbox_virtual_spectrum,
+                    self.checkbox_sdec_spectrum,
                     self.checkbox_photosphere,
                     self.checkbox_no_interaction,
                     self.checkbox_electron_scatter,
