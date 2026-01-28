@@ -515,13 +515,12 @@ class LineInfoWidget:
             )
 
         if self.show_sdec and self.sdec_plotter is not None:
-            self.sdec_plotter._parse_species_list(species_list=None)
-
-            self.sdec_plotter._calculate_plotting_data(
-            packets_mode = "virtual",
-            packet_wvl_range = None,
-            distance = None,
-            nelements = None,
+            self.sdec_plotter.prepare_plot_data(
+                packets_mode="virtual",
+                packet_wvl_range=None,
+                distance=None,
+                species_list=None,
+                nelements=None,
             )
 
             self.line_renderers["virtual_spectrum"] = p.line(
