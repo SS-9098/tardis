@@ -94,6 +94,7 @@ extensions = [
     "nbsphinx",
     "numpydoc",
     "recommonmark",
+    "nbsite.pyodide",
 ]
 
 bibtex_bibfiles = ["tardis.bib"]
@@ -317,7 +318,8 @@ from ipywidgets.embed import DEFAULT_EMBED_REQUIREJS_URL
 
 # https://panel.holoviz.org/how_to/wasm/sphinx.html#configuration
 nbsite_pyodide_conf = {
-     "PYODIDE_URL": "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/pyodide.js"
+    "PYODIDE_URL": "https://cdn.jsdelivr.net/pyodide/v0.26.3/full/pyodide.js",
+    "requirements": ["panel", "pandas"],
 }
 
 html_js_files = [

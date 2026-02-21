@@ -111,6 +111,165 @@ selected element present in the selected shell.
 4. **Level Abundances** - Fractional mass abundance of each level of the
 selected ion and element in the selected shell.
 
+Try the interactive demo below (click the run button to launch it in your
+browser using Pyodide — no installation required):
+
+.. pyodide::
+
+    import pandas as pd
+    import panel as pn
+
+    pn.extension("tabulator")
+
+    # Sample data representing a TARDIS simulation output
+    def roman(n):
+        vals = [
+            (1000, "M"), (900, "CM"), (500, "D"), (400, "CD"),
+            (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+            (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+        ]
+        result = ""
+        for v, s in vals:
+            while n >= v:
+                result += s
+                n -= v
+        return result
+
+    def fmt(x):
+        return f"{x:.6e}"
+
+    n_shells = 5
+    t_rad = [10000, 9500, 9000, 8500, 8000]
+    dilution = [0.10, 0.15, 0.20, 0.25, 0.30]
+    shells_df = pd.DataFrame(
+        {
+            "Rad. Temp.": [fmt(t) for t in t_rad],
+            "Dilution Factor": [fmt(w) for w in dilution],
+        },
+        index=pd.Index(range(1, n_shells + 1), name="Shell No."),
+    )
+
+    element_symbols = {1: "H", 14: "Si", 26: "Fe"}
+    element_Z = [1, 14, 26]
+    element_ab = {
+        1:  [0.50, 0.50, 0.50, 0.50, 0.50],
+        14: [0.30, 0.30, 0.30, 0.30, 0.30],
+        26: [0.20, 0.20, 0.20, 0.20, 0.20],
+    }
+    ion_counts_map = {1: 2, 14: 2, 26: 3}
+    ion_ab = {
+        (1, 0):  [0.90, 0.85, 0.80, 0.75, 0.70],
+        (1, 1):  [0.10, 0.15, 0.20, 0.25, 0.30],
+        (14, 0): [0.60, 0.55, 0.50, 0.45, 0.40],
+        (14, 1): [0.40, 0.45, 0.50, 0.55, 0.60],
+        (26, 0): [0.50, 0.48, 0.46, 0.44, 0.42],
+        (26, 1): [0.30, 0.32, 0.34, 0.36, 0.38],
+        (26, 2): [0.20, 0.20, 0.20, 0.20, 0.20],
+    }
+    level_ab = {
+        (1, 0):  [0.70, 0.20, 0.10],
+        (1, 1):  [0.80, 0.20],
+        (14, 0): [0.50, 0.30, 0.20],
+        (14, 1): [0.60, 0.40],
+        (26, 0): [0.40, 0.35, 0.25],
+        (26, 1): [0.50, 0.30, 0.20],
+        (26, 2): [0.60, 0.40],
+    }
+
+    def get_element_df(shell_num):
+        col = f"Frac. Ab. (Shell {shell_num})"
+        return pd.DataFrame(
+            {
+                "Element": [element_symbols[z] for z in element_Z],
+                col: [fmt(element_ab[z][shell_num - 1]) for z in element_Z],
+            },
+            index=pd.Index(element_Z, name="Z"),
+        )
+
+    def get_ion_df(z, shell_num):
+        n_ions = ion_counts_map[z]
+        col = f"Frac. Ab. (Z={z})"
+        return pd.DataFrame(
+            {
+                "Species": [f"{element_symbols[z]} {roman(i + 1)}" for i in range(n_ions)],
+                col: [fmt(ion_ab[(z, i)][shell_num - 1]) for i in range(n_ions)],
+            },
+            index=pd.Index(range(n_ions), name="Ion"),
+        )
+
+    def get_level_df(z, ion):
+        levels = level_ab[(z, ion)]
+        col = f"Frac. Ab. (Ion={ion})"
+        return pd.DataFrame(
+            {col: [fmt(a) for a in levels]},
+            index=pd.Index(range(len(levels)), name="Level"),
+        )
+
+    def make_table(df):
+        return pn.widgets.Tabulator(
+            df,
+            selectable=True,
+            show_index=True,
+            sizing_mode="stretch_width",
+            height=min(400, max(200, len(df) * 30 + 50)),
+            disabled=True,
+        )
+
+    shells_table = make_table(shells_df)
+    elem_table = make_table(get_element_df(1))
+    ion_table = make_table(get_ion_df(element_Z[0], 1))
+    level_table = make_table(get_level_df(element_Z[0], 0))
+
+    def on_shell_select(event):
+        if not event.new:
+            return
+        shell_num = event.new[0] + 1
+        elem_table.value = get_element_df(shell_num)
+        if elem_table.selection == [0]:
+            elem_table.selection = []
+        elem_table.selection = [0]
+
+    def on_elem_select(event):
+        if not event.new:
+            return
+        shell_sel = shells_table.selection
+        if not shell_sel:
+            return
+        shell_num = shell_sel[0] + 1
+        z = element_Z[event.new[0]]
+        ion_table.value = get_ion_df(z, shell_num)
+        if ion_table.selection == [0]:
+            ion_table.selection = []
+        ion_table.selection = [0]
+
+    def on_ion_select(event):
+        if not event.new:
+            return
+        shell_sel = shells_table.selection
+        elem_sel = elem_table.selection
+        if not shell_sel or not elem_sel:
+            return
+        z = element_Z[elem_sel[0]]
+        ion = event.new[0]
+        level_table.value = get_level_df(z, ion)
+
+    shells_table.param.watch(on_shell_select, "selection")
+    elem_table.param.watch(on_elem_select, "selection")
+    ion_table.param.watch(on_ion_select, "selection")
+
+    shells_table.selection = [0]
+
+    info_text = pn.pane.HTML(
+        "<b>Frac. Ab.</b> denotes <i>Fractional Abundances</i> (all values in "
+        "each table sum to 1)<br><b>W</b> denotes <i>Dilution Factor</i> and "
+        "<b>Rad. Temp.</b> is <i>Radiative Temperature (in K)</i>"
+    )
+
+    pn.Column(
+        info_text,
+        pn.Row(shells_table, elem_table, ion_table, level_table, sizing_mode="stretch_width"),
+    ).servable()
+
 Line Info Widget
 ################
 
