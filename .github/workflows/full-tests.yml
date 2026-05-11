@@ -4,18 +4,7 @@
 
 name: full-tests
 
-on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
-    types:
-      - opened
-      - reopened
-      - synchronize
-      - labeled
+on: workflow_dispatch
 
 env:
   CACHE_NUMBER: 0  # increase to reset cache manually
@@ -32,7 +21,6 @@ concurrency:
 
 jobs:
   test-cache:
-    if: github.repository_owner == 'tardis-sn' && contains(github.event.pull_request.labels.*.name, 'full-tests')
     uses: ./.github/workflows/lfs-cache.yml
     with:
       atom-data-sparse: false
@@ -40,7 +28,6 @@ jobs:
       allow_lfs_pull: ${{ github.ref == 'refs/heads/master' || contains(github.event.pull_request.labels.*.name, 'git-lfs-pull') }}
 
   run-tests:
-    if: github.repository_owner == 'tardis-sn' && contains(github.event.pull_request.labels.*.name, 'full-tests')
     needs: [test-cache]
     runs-on: self-hosted
     timeout-minutes: 60
