@@ -14,3 +14,6 @@ runs:
         uses: tardis-sn/tardis-actions/setup-env@main
         with:
           os-label: ${{ inputs.os-label }}
+          lock-file-url-prefix: "https://raw.githubusercontent.com/SS-9098/tardis/refs/heads/unpin-environment"
+          cache-environment: "false"
+          cache-downloads: "false"
